@@ -1,13 +1,42 @@
-import React, { useEffect, useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import * as maplibregl from 'maplibre-gl';
 import axios from 'axios';
 import 'maplibre-gl/dist/maplibre-gl.css';
+
+// maplibre-gl v6 derives its web-worker URL from import.meta.url, which breaks
+// under Vite's dependency pre-bundling (worker file 404s -> geojson sources
+// silently never load). Point it at static copies served from public/ instead.
+// NOTE: these must match the installed maplibre-gl version — re-copy from
+// node_modules/maplibre-gl/dist/ after upgrading the package.
+maplibregl.setWorkerUrl(`${import.meta.env.BASE_URL}maplibre/maplibre-gl-worker.mjs`);
+
+const CATEGORY_COLORS = [
+  ['#f97316', 'Unauthorized Construction'],
+  ['#ef4444', 'Deforestation / Canopy Loss'],
+  ['#a855f7', 'Surface Excavation / Mining'],
+  ['#3b82f6', 'Riverbed Shift'],
+  ['#eab308', 'Cleared Ground / Other'],
+];
 
 export default function MapViewer() {
   const beforeMapRef = useRef(null);
   const afterMapRef = useRef(null);
   const [selectedSite, setSelectedSite] = useState('train_2');
   const [debugStatus, setDebugStatus] = useState('Ready');
+  const [sites, setSites] = useState([]);
+
+  // Load the available site list once for the region selector.
+  useEffect(() => {
+    axios.get('http://127.0.0.1:8000/api/sites')
+      .then((res) => {
+        const list = res.data.sites || [];
+        if (list.length) {
+          setSites(list);
+          setSelectedSite((cur) => (list.includes(cur) ? cur : list[0]));
+        }
+      })
+      .catch(() => { /* keep the default site if the list fails to load */ });
+  }, []);
   
   const beforeMapInstance = useRef(null);
   const afterMapInstance = useRef(null);
@@ -17,31 +46,26 @@ export default function MapViewer() {
     if (mapsLoaded.current) return;
     mapsLoaded.current = true;
 
-    const satelliteStyle = {
+    // No basemap: the two panes show only the site's T1/T2 imagery on a
+    // dark background, so the comparison is limited to the image extent.
+    const darkStyle = {
       version: 8,
-      sources: {
-        'esri-satellite': {
-          type: 'raster',
-          tiles: ['https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}'],
-          tileSize: 256,
-          attribution: 'Esri'
-        }
-      },
-      layers: [{ id: 'satellite-layer', type: 'raster', source: 'esri-satellite', minzoom: 0, maxzoom: 20 }]
+      sources: {},
+      layers: [{ id: 'background', type: 'background', paint: { 'background-color': '#0f172a' } }]
     };
 
     const initialCenter = [-97.7431, 30.2672];
 
     beforeMapInstance.current = new maplibregl.Map({
       container: beforeMapRef.current,
-      style: satelliteStyle,
+      style: darkStyle,
       center: initialCenter,
       zoom: 14
     });
 
     afterMapInstance.current = new maplibregl.Map({
       container: afterMapRef.current,
-      style: satelliteStyle,
+      style: darkStyle,
       center: initialCenter,
       zoom: 14
     });
@@ -56,6 +80,26 @@ export default function MapViewer() {
 
     beforeMapInstance.current.on('move', () => syncMaps(beforeMapInstance.current, afterMapInstance.current));
     afterMapInstance.current.on('move', () => syncMaps(afterMapInstance.current, beforeMapInstance.current));
+
+    // Hotspot detail popup (registered once; layer presence is checked at click time)
+    afterMapInstance.current.on('click', (e) => {
+      const map = afterMapInstance.current;
+      if (!map.getLayer('hotspots-fill')) return;
+      const hits = map.queryRenderedFeatures(e.point, { layers: ['hotspots-fill'] });
+      if (!hits.length) return;
+      const p = hits[0].properties;
+      new maplibregl.Popup({ closeButton: false, maxWidth: '260px' })
+        .setLngLat(e.lngLat)
+        .setHTML(
+          `<div style="font-family:sans-serif;font-size:13px;line-height:1.5;">
+            <strong>${p.category}</strong><br/>
+            Area: ${p.area_hectares} ha (${p.area_sqm} m&sup2;)<br/>
+            Severity: ${p.severity}<br/>
+            Confidence: ${Math.round((p.confidence || 0) * 100)}%
+          </div>`
+        )
+        .addTo(map);
+    });
   }, []);
 
   useEffect(() => {
@@ -82,6 +126,25 @@ export default function MapViewer() {
         if (!afterMap || !beforeMap) return;
 
         const updateMapLayers = () => {
+          // Lay the actual epoch imagery on each map at the site's footprint
+          // (same pixel -> lon/lat mapping the backend uses for polygons).
+          const imageBounds = geojson.image_bounds;
+          const setEpochImage = (map, key, epoch) => {
+            const sourceId = `${key}-image`;
+            const layerId = `${key}-layer`;
+            if (map.getLayer(layerId)) map.removeLayer(layerId);
+            if (map.getSource(sourceId)) map.removeSource(sourceId);
+            map.addSource(sourceId, {
+              type: 'image',
+              url: `http://127.0.0.1:8000/api/sites/${selectedSite}/image/${epoch}`,
+              coordinates: imageBounds
+            });
+            map.addLayer({ id: layerId, type: 'raster', source: sourceId });
+          };
+
+          setEpochImage(beforeMap, 't1', 'T1');
+          setEpochImage(afterMap, 't2', 'T2');
+
           if (afterMap.getLayer('hotspots-fill')) afterMap.removeLayer('hotspots-fill');
           if (afterMap.getLayer('hotspots-outline')) afterMap.removeLayer('hotspots-outline');
           if (afterMap.getSource('hotspots')) afterMap.removeSource('hotspots');
@@ -92,46 +155,41 @@ export default function MapViewer() {
             id: 'hotspots-fill',
             type: 'fill',
             source: 'hotspots',
-            paint: { 'fill-color': '#ff00ff', 'fill-opacity': 0.7 }
+            paint: {
+              'fill-color': [
+                'match', ['get', 'category'],
+                'Unauthorized Construction', '#f97316',
+                'Deforestation / Canopy Loss', '#ef4444',
+                'Surface Excavation / Mining', '#a855f7',
+                'Riverbed Shift', '#3b82f6',
+                '#eab308'
+              ],
+              'fill-opacity': 0.55
+            }
           });
 
           afterMap.addLayer({
             id: 'hotspots-outline',
             type: 'line',
             source: 'hotspots',
-            paint: { 'line-color': '#ffff00', 'line-width': 4 }
+            paint: { 'line-color': '#ffffff', 'line-width': 2 }
           });
 
-          const bounds = new maplibregl.LngLatBounds();
-          let coordCount = 0;
-
-          const extractCoords = (arr) => {
-            if (arr.length >= 2 && typeof arr[0] === 'number' && typeof arr[1] === 'number') {
-              bounds.extend([arr[0], arr[1]]);
-              coordCount++;
-            } else if (Array.isArray(arr)) {
-              arr.forEach(extractCoords);
-            }
-          };
-
-          geojson.features.forEach(f => {
-            if (f.geometry && f.geometry.coordinates) {
-              extractCoords(f.geometry.coordinates);
-            }
-          });
-
-          console.log(`Extracted ${coordCount} coordinates. Bounds empty?`, bounds.isEmpty());
-
-          if (coordCount > 0 && !bounds.isEmpty()) {
-            beforeMap.fitBounds(bounds, { padding: 60, maxZoom: 18, duration: 0 });
-          }
+          // Frame and lock both maps to the site image extent so the
+          // comparison stays limited to the imagery.
+          // imageBounds order: [top-left, top-right, bottom-right, bottom-left]
+          const siteBounds = new maplibregl.LngLatBounds(imageBounds[3], imageBounds[1]);
+          beforeMap.setMaxBounds(siteBounds);
+          afterMap.setMaxBounds(siteBounds);
+          beforeMap.fitBounds(siteBounds, { padding: 12, duration: 0 });
         };
 
-        if (afterMap.isStyleLoaded()) {
-          updateMapLayers();
-        } else {
-          afterMap.once('style.load', updateMapLayers);
-        }
+        const whenStyleReady = (map, fn) => {
+          if (map.isStyleLoaded()) fn();
+          else map.once('style.load', fn);
+        };
+        // Both maps must have their style ready before receiving layers.
+        whenStyleReady(beforeMap, () => whenStyleReady(afterMap, updateMapLayers));
 
         setDebugStatus(`SUCCESS: Loaded ${geojson.features.length} polygons for ${selectedSite}.`);
 
@@ -159,9 +217,9 @@ export default function MapViewer() {
         <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
           <label style={{ fontSize: '15px', color: '#cbd5e1', fontWeight: '600' }}>Region:</label>
           <select value={selectedSite} onChange={(e) => setSelectedSite(e.target.value)} style={{ padding: '8px 16px', borderRadius: '6px', background: '#1e293b', color: '#fff', border: '2px solid #38bdf8', fontSize: '15px', cursor: 'pointer', outline: 'none' }}>
-            <option value="train_2">train_2</option>
-            <option value="train_3">train_3</option>
-            <option value="train_5">train_5</option>
+            {(sites.length ? sites : [selectedSite]).map((s) => (
+              <option key={s} value={s}>{s}</option>
+            ))}
           </select>
         </div>
       </div>
@@ -177,6 +235,15 @@ export default function MapViewer() {
             After (Change Detection Overlays)
           </div>
           <div ref={afterMapRef} style={{ width: '100%', height: '100%' }} />
+          <div style={{ position: 'absolute', bottom: 16, right: 16, zIndex: 10, background: 'rgba(2, 6, 23, 0.85)', padding: '10px 14px', borderRadius: '6px', border: '1px solid #334155', pointerEvents: 'none' }}>
+            <div style={{ color: '#fff', fontWeight: 'bold', fontSize: '12px', marginBottom: '4px' }}>Change Categories</div>
+            {CATEGORY_COLORS.map(([color, label]) => (
+              <div key={label} style={{ display: 'flex', alignItems: 'center', gap: '8px', marginTop: '4px' }}>
+                <span style={{ width: '12px', height: '12px', background: color, borderRadius: '2px', display: 'inline-block', flexShrink: 0 }} />
+                <span style={{ color: '#cbd5e1', fontSize: '12px', whiteSpace: 'nowrap' }}>{label}</span>
+              </div>
+            ))}
+          </div>
         </div>
       </div>
     </div>

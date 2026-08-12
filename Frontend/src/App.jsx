@@ -1,4 +1,3 @@
-import React from 'react';
 import MapViewer from './components/MapViewer';
 import './App.css';
 
