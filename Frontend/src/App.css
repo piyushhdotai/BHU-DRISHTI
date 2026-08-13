@@ -11,8 +11,17 @@ body {
   padding: 0;
 }
 
-/* Container for the dual map compare control */
-.map-container {
+/* Before/After comparison wrapper for maplibre-gl-compare: both map panes
+   are stacked full-size and the plugin clips them at the swipe divider. */
+.comparison-container {
+  position: relative;
+  flex: 1;
+  width: 100%;
+  min-height: 0;
+  overflow: hidden;
+}
+
+.compare-map {
   position: absolute;
   top: 0;
   bottom: 0;
@@ -20,16 +29,59 @@ body {
   height: 100%;
 }
 
-#before-map {
-  position: absolute;
-  top: 0;
-  bottom: 0;
-  width: 100%;
+/* Swipe divider tuned to the dark dashboard theme */
+.maplibregl-compare {
+  background-color: #38bdf8;
 }
 
-#after-map {
-  position: absolute;
-  top: 0;
-  bottom: 0;
-  width: 100%;
+.maplibregl-compare .compare-swiper-vertical {
+  background-color: #0ea5e9;
+}
+
+/* Dark-theme change popup */
+.maplibregl-popup-content {
+  background: rgba(2, 6, 23, 0.92);
+  color: #e2e8f0;
+  border: 1px solid #334155;
+  border-radius: 8px;
+  padding: 10px 12px;
+  font-family: sans-serif;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.5);
+}
+
+.maplibregl-popup-tip {
+  border-top-color: rgba(2, 6, 23, 0.92) !important;
+  border-bottom-color: rgba(2, 6, 23, 0.92) !important;
+  border-left-color: rgba(2, 6, 23, 0.92) !important;
+  border-right-color: rgba(2, 6, 23, 0.92) !important;
+}
+
+.change-popup {
+  min-width: 190px;
+  font-size: 13px;
+  line-height: 1.5;
+}
+
+.change-popup-title {
+  font-weight: 700;
+  color: #38bdf8;
+  font-size: 14px;
+  margin-bottom: 6px;
+}
+
+.change-popup-row {
+  display: flex;
+  justify-content: space-between;
+  gap: 16px;
+  margin-top: 2px;
+}
+
+.change-popup-row .k {
+  color: #94a3b8;
+}
+
+.change-popup-row .v {
+  color: #f1f5f9;
+  font-weight: 600;
+  text-align: right;
 }
