@@ -1,9 +1,9 @@
-import os
 import cv2
 import numpy as np
 from shapely.geometry import Polygon, mapping
 
 from change_classifier import extract_blob_features, classify_blob
+from image_store import get_image_bytes
 
 BASE_LON = -97.7431
 BASE_LAT = 30.2672
@@ -42,20 +42,22 @@ def _detect_change_mask(t1_color, t2_color):
     return mask
 
 
-def process_change_detection(site_id: str):
-    backend_dir = os.path.dirname(os.path.abspath(__file__))
-    label_path = os.path.join(backend_dir, "data", "label", f"{site_id}.png")
-    t1_path = os.path.join(backend_dir, "data", "T1", f"{site_id}.png")
-    t2_path = os.path.join(backend_dir, "data", "T2", f"{site_id}.png")
+def _load_stored_image(site_id: str, epoch: str, flags):
+    """Fetch PNG bytes from MongoDB and decode them with OpenCV."""
+    data = get_image_bytes(site_id, epoch)
+    if data is None:
+        return None
+    return cv2.imdecode(np.frombuffer(data, np.uint8), flags)
 
-    t1_color = cv2.imread(t1_path, cv2.IMREAD_COLOR)
-    t2_color = cv2.imread(t2_path, cv2.IMREAD_COLOR)
+
+def process_change_detection(site_id: str):
+    t1_color = _load_stored_image(site_id, "T1", cv2.IMREAD_COLOR)
+    t2_color = _load_stored_image(site_id, "T2", cv2.IMREAD_COLOR)
     if t1_color is None or t2_color is None:
         return {"error": f"Image data for {site_id} not found."}
 
-    if os.path.exists(label_path):
-        mask = cv2.imread(label_path, cv2.IMREAD_GRAYSCALE)
-    else:
+    mask = _load_stored_image(site_id, "label", cv2.IMREAD_GRAYSCALE)
+    if mask is None:
         mask = _detect_change_mask(t1_color, t2_color)
 
     kernel = np.ones((5, 5), np.uint8)
