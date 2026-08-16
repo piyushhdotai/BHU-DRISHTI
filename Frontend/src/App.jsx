@@ -1,11 +1,15 @@
 import { useEffect, useState } from 'react';
 import MapViewer from './components/MapViewer';
 import SplashScreen from './components/SplashScreen';
+import AuthScreen from './components/AuthScreen';
 import './App.css';
 
 function App() {
   const [showSplash, setShowSplash] = useState(true);
   const [isSplashFadingOut, setIsSplashFadingOut] = useState(false);
+  const [isAuthenticated, setIsAuthenticated] = useState(
+    () => localStorage.getItem('bhudrishti_auth') === 'true'
+  );
 
   useEffect(() => {
     if (!showSplash) {
@@ -31,31 +35,25 @@ function App() {
     };
   }, [showSplash]);
 
+  const handleLogout = () => {
+    localStorage.removeItem('bhudrishti_auth');
+    setIsAuthenticated(false);
+  };
+
   return (
     <div className="app-shell">
-      {/* Platform Title Header Overlay */}
-      <header style={{
-        position: 'absolute',
-        top: '15px',
-        left: '15px',
-        zIndex: 10,
-        backgroundColor: 'rgba(15, 23, 42, 0.85)',
-        color: '#ffffff',
-        padding: '12px 20px',
-        borderRadius: '8px',
-        backdropFilter: 'blur(6px)',
-        boxShadow: '0 4px 6px rgba(0, 0, 0, 0.3)',
-        fontFamily: 'sans-serif'
-      }}>
-        <h2 style={{ margin: 0, fontSize: '1.2rem', color: '#38bdf8' }}>BHU-DRISHTI</h2>
-        <p style={{ margin: '4px 0 0 0', fontSize: '0.8rem', color: '#94a3b8' }}>
-          Bi-temporal Geospatial Change Detection
-        </p>
-      </header>
+      {showSplash && <SplashScreen isVisible={showSplash} isFadingOut={isSplashFadingOut} />}
 
-      {/* Main Map Comparison Control */}
-      <MapViewer />
-      <SplashScreen isVisible={showSplash} isFadingOut={isSplashFadingOut} />
+      {!showSplash && !isAuthenticated && (
+        <AuthScreen onLoginSuccess={() => {
+          localStorage.setItem('bhudrishti_auth', 'true');
+          setIsAuthenticated(true);
+        }} />
+      )}
+
+      {isAuthenticated && !showSplash && (
+        <MapViewer onLogout={handleLogout} />
+      )}
     </div>
   );
 }

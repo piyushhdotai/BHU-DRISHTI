@@ -297,7 +297,7 @@ function EpochChip({ label }) {
 /* MapViewer                                                           */
 /* ------------------------------------------------------------------ */
 
-export default function MapViewer() {
+export default function MapViewer({ onLogout }) {
   const containerRef = useRef(null);
   const beforeMapRef = useRef(null);
   const afterMapRef = useRef(null);
@@ -535,6 +535,31 @@ export default function MapViewer() {
               <option key={s} value={s}>{s}</option>
             ))}
           </select>
+
+          <button
+            type="button"
+            onClick={() => onLogout?.()}
+            style={{
+              border: '1px solid rgba(148, 163, 184, 0.4)',
+              background: '#1e293b',
+              color: '#f8fafc',
+              borderRadius: '6px',
+              padding: '8px 12px',
+              fontSize: '14px',
+              fontWeight: 600,
+              cursor: 'pointer',
+              fontFamily: 'sans-serif',
+              transition: 'background-color 0.15s ease'
+            }}
+            onMouseEnter={(event) => {
+              event.currentTarget.style.backgroundColor = '#334155';
+            }}
+            onMouseLeave={(event) => {
+              event.currentTarget.style.backgroundColor = '#1e293b';
+            }}
+          >
+            Logout
+          </button>
         </div>
       </div>
 
