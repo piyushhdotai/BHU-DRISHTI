@@ -24,8 +24,29 @@ const CATEGORY_COLORS = [
 ];
 const FALLBACK_COLOR = '#9ca3af';
 
+const CATEGORY_ALIASES = {
+  'new construction': 'New Construction',
+  'unauthorized construction': 'New Construction',
+  'new_construction': 'New Construction',
+  'new-construction': 'New Construction',
+  'deforestation / canopy loss': 'Deforestation / Canopy Loss',
+  'deforestation / canopyloss': 'Deforestation / Canopy Loss',
+  'deforestation/canopy loss': 'Deforestation / Canopy Loss',
+  'surface excavation / mining': 'Surface Excavation / Mining',
+  'surface excavation/mining': 'Surface Excavation / Mining',
+  'riverbed shift': 'Riverbed Shift',
+  'cleared ground / other': 'Cleared Ground / Other',
+  'cleared ground/other': 'Cleared Ground / Other'
+};
+
+function normalizeCategoryKey(value) {
+  if (value == null) return '';
+  const normalized = String(value).trim().toLowerCase().replace(/[_-]+/g, ' ').replace(/\s+/g, ' ');
+  return CATEGORY_ALIASES[normalized] ?? normalized;
+}
+
 const CATEGORY_FILL = [
-  'match', ['get', 'category'],
+  'match', ['get', 'category_key'],
   ...CATEGORY_COLORS.flatMap(([color, label]) => [label, color]),
   FALLBACK_COLOR,
 ];
@@ -241,11 +262,11 @@ function StatsPanel({ stats, selectedSite }) {
   return (
     <div style={{
       position: 'absolute', top: 16, left: 16, zIndex: 10,
-      background: 'rgba(2, 6, 23, 0.85)', border: '1px solid #334155',
+      background: 'var(--panel-bg)', border: '1px solid var(--panel-border)', boxShadow: 'var(--panel-shadow)',
       borderRadius: '8px', padding: '12px 16px', minWidth: '190px',
       fontFamily: 'sans-serif', pointerEvents: 'none'
     }}>
-      <div style={{ color: '#38bdf8', fontWeight: 'bold', fontSize: '12px', marginBottom: '8px', letterSpacing: '0.05em' }}>
+      <div style={{ color: 'var(--brand-blue)', fontWeight: 'bold', fontSize: '12px', marginBottom: '8px', letterSpacing: '0.05em' }}>
         GIS ANALYSIS
       </div>
       {[
@@ -256,8 +277,8 @@ function StatsPanel({ stats, selectedSite }) {
         ['Total Change', stats ? formatHa(stats.totalAreaHectares) : '—'],
       ].map(([k, v], i) => (
         <div key={`${k}-${i}`} style={{ display: 'flex', justifyContent: 'space-between', gap: '18px', marginTop: '4px' }}>
-          <span style={{ color: '#94a3b8', fontSize: '12px' }}>{k}</span>
-          <span style={{ color: '#f1f5f9', fontSize: '12px', fontWeight: 600 }}>{v}</span>
+          <span style={{ color: 'var(--text-secondary)', fontSize: '12px' }}>{k}</span>
+          <span style={{ color: 'var(--text-primary)', fontSize: '12px', fontWeight: 600 }}>{v}</span>
         </div>
       ))}
     </div>
@@ -267,14 +288,14 @@ function StatsPanel({ stats, selectedSite }) {
 function Legend() {
   return (
     <div style={{
-      background: 'rgba(2, 6, 23, 0.85)', padding: '10px 14px', borderRadius: '6px',
-      border: '1px solid #334155', pointerEvents: 'none', fontFamily: 'sans-serif'
+      background: 'var(--panel-bg)', padding: '10px 14px', borderRadius: '6px', boxShadow: 'var(--panel-shadow)',
+      border: '1px solid var(--panel-border)', pointerEvents: 'none', fontFamily: 'sans-serif'
     }}>
-      <div style={{ color: '#fff', fontWeight: 'bold', fontSize: '12px', marginBottom: '4px' }}>Change Categories</div>
+      <div style={{ color: 'var(--text-primary)', fontWeight: 'bold', fontSize: '12px', marginBottom: '4px' }}>Change Categories</div>
       {CATEGORY_COLORS.map(([color, label]) => (
         <div key={label} style={{ display: 'flex', alignItems: 'center', gap: '8px', marginTop: '4px' }}>
           <span style={{ width: '12px', height: '12px', background: color, borderRadius: '2px', display: 'inline-block', flexShrink: 0 }} />
-          <span style={{ color: '#cbd5e1', fontSize: '12px', whiteSpace: 'nowrap' }}>{label}</span>
+          <span style={{ color: 'var(--text-secondary)', fontSize: '12px', whiteSpace: 'nowrap' }}>{label}</span>
         </div>
       ))}
     </div>
@@ -284,9 +305,9 @@ function Legend() {
 function EpochChip({ label }) {
   return (
     <div style={{
-      background: 'rgba(2, 6, 23, 0.8)', color: '#fff', padding: '6px 12px',
+      background: 'var(--panel-bg)', color: 'var(--text-primary)', padding: '6px 12px',
       borderRadius: '4px', fontWeight: 'bold', fontSize: '13px',
-      border: '1px solid #334155', fontFamily: 'sans-serif', pointerEvents: 'none'
+      border: '1px solid var(--panel-border)', boxShadow: 'var(--panel-shadow)', fontFamily: 'sans-serif', pointerEvents: 'none'
     }}>
       {label}
     </div>
@@ -297,7 +318,7 @@ function EpochChip({ label }) {
 /* MapViewer                                                           */
 /* ------------------------------------------------------------------ */
 
-export default function MapViewer({ onLogout }) {
+export default function MapViewer({ onLogout, theme, onToggleTheme }) {
   const containerRef = useRef(null);
   const beforeMapRef = useRef(null);
   const afterMapRef = useRef(null);
@@ -444,7 +465,19 @@ export default function MapViewer({ onLogout }) {
       }
 
       const allFeatures = data.features;
-      const validFeatures = allFeatures.filter(isValidFeature);
+      const validFeatures = allFeatures.filter(isValidFeature).map((feature) => {
+        const props = { ...(feature.properties || {}) };
+        const rawCategory = props.category ?? props.class ?? '';
+        const normalizedCategory = normalizeCategoryKey(rawCategory);
+        return {
+          ...feature,
+          properties: {
+            ...props,
+            category_key: normalizedCategory || props.category || 'Unknown',
+            category: props.category ?? normalizedCategory ?? 'Unknown'
+          }
+        };
+      });
       if (validFeatures.length !== allFeatures.length) {
         console.warn(`Skipped ${allFeatures.length - validFeatures.length} invalid feature(s).`);
       }
@@ -509,26 +542,50 @@ export default function MapViewer({ onLogout }) {
   }, [selectedSite]);
 
   return (
-    <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, display: 'flex', flexDirection: 'column', backgroundColor: '#0f172a', zIndex: 9999 }}>
+    <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, display: 'flex', flexDirection: 'column', backgroundColor: 'var(--app-bg)', zIndex: 9999 }}>
       {/* Header: title, load status, site selector */}
-      <div style={{ height: '65px', background: '#020617', display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '0 24px', flexShrink: 0, borderBottom: '1px solid #334155' }}>
+      <div style={{ height: '65px', background: 'var(--toolbar-bg)', display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '0 24px', flexShrink: 0, borderBottom: '1px solid var(--header-divider)', boxShadow: 'var(--panel-shadow)' }}>
         <div style={{ display: 'flex', flexDirection: 'column' }}>
-          <span style={{ color: '#fff', fontWeight: 'bold', fontSize: '18px', fontFamily: 'sans-serif' }}>BHU-DRISHTI Change Detection</span>
+          <span style={{ color: 'var(--text-primary)', fontWeight: 'bold', fontSize: '18px', fontFamily: 'sans-serif' }}>BHU-DRISHTI Change Detection</span>
           <span style={{ color: STATUS_COLORS[status.kind], fontSize: '13px', fontWeight: '600', fontFamily: 'sans-serif' }}>
             {status.message}
           </span>
         </div>
         <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-          <label style={{ fontSize: '15px', color: '#cbd5e1', fontWeight: '600', fontFamily: 'sans-serif' }}>Region:</label>
+          <button
+            type="button"
+            onClick={onToggleTheme}
+            aria-label={theme === 'dark' ? 'Switch to light mode' : 'Switch to dark mode'}
+            style={{
+              border: '1px solid var(--control-border)',
+              background: 'var(--control-bg)',
+              color: 'var(--text-primary)',
+              borderRadius: '999px',
+              width: '36px',
+              height: '36px',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              cursor: 'pointer',
+              fontSize: '16px',
+              boxShadow: 'var(--panel-shadow)',
+              fontFamily: 'sans-serif'
+            }}
+          >
+            {theme === 'dark' ? '☀️' : '🌙'}
+          </button>
+
+          <label style={{ fontSize: '15px', color: 'var(--text-secondary)', fontWeight: '600', fontFamily: 'sans-serif' }}>Region:</label>
           <select
             value={selectedSite}
             disabled={status.kind === 'loading'}
             onChange={(e) => setSelectedSite(e.target.value)}
             style={{
-              padding: '8px 16px', borderRadius: '6px', background: '#1e293b', color: '#fff',
-              border: '2px solid #38bdf8', fontSize: '15px', outline: 'none',
+              padding: '8px 16px', borderRadius: '6px', background: 'var(--control-bg)', color: 'var(--input-text)',
+              border: '1px solid var(--control-border)', boxShadow: 'var(--panel-shadow)', fontSize: '15px', outline: 'none',
               cursor: status.kind === 'loading' ? 'wait' : 'pointer',
-              opacity: status.kind === 'loading' ? 0.6 : 1
+              opacity: status.kind === 'loading' ? 0.6 : 1,
+              fontFamily: 'sans-serif'
             }}
           >
             {(sites.length ? sites : [selectedSite]).map((s) => (
@@ -540,22 +597,23 @@ export default function MapViewer({ onLogout }) {
             type="button"
             onClick={() => onLogout?.()}
             style={{
-              border: '1px solid rgba(148, 163, 184, 0.4)',
-              background: '#1e293b',
-              color: '#f8fafc',
+              border: '1px solid var(--control-border)',
+              background: 'var(--control-bg)',
+              color: 'var(--text-primary)',
               borderRadius: '6px',
               padding: '8px 12px',
               fontSize: '14px',
               fontWeight: 600,
               cursor: 'pointer',
               fontFamily: 'sans-serif',
-              transition: 'background-color 0.15s ease'
+              transition: 'background-color 0.15s ease',
+              boxShadow: 'var(--panel-shadow)'
             }}
             onMouseEnter={(event) => {
-              event.currentTarget.style.backgroundColor = '#334155';
+              event.currentTarget.style.backgroundColor = 'var(--control-hover)';
             }}
             onMouseLeave={(event) => {
-              event.currentTarget.style.backgroundColor = '#1e293b';
+              event.currentTarget.style.backgroundColor = 'var(--control-bg)';
             }}
           >
             Logout

@@ -10,6 +10,11 @@ function App() {
   const [isAuthenticated, setIsAuthenticated] = useState(
     () => localStorage.getItem('bhudrishti_auth') === 'true'
   );
+  const [theme, setTheme] = useState(() => document.documentElement.dataset.theme || 'light');
+
+  useEffect(() => {
+    document.documentElement.dataset.theme = theme;
+  }, [theme]);
 
   useEffect(() => {
     if (!showSplash) {
@@ -52,7 +57,11 @@ function App() {
       )}
 
       {isAuthenticated && !showSplash && (
-        <MapViewer onLogout={handleLogout} />
+        <MapViewer
+          onLogout={handleLogout}
+          theme={theme}
+          onToggleTheme={() => setTheme((current) => (current === 'dark' ? 'light' : 'dark'))}
+        />
       )}
     </div>
   );
