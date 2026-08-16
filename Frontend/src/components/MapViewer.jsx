@@ -3,6 +3,8 @@ import * as maplibregl from 'maplibre-gl';
 import Compare from '@maplibre/maplibre-gl-compare';
 import axios from 'axios';
 import 'maplibre-gl/dist/maplibre-gl.css';
+import { API_BASE } from '../api';
+import ReportButton from './ReportButton';
 
 // maplibre-gl v6 derives its web-worker URL from import.meta.url, which breaks
 // under Vite's dependency pre-bundling (worker file 404s -> geojson sources
@@ -10,8 +12,6 @@ import 'maplibre-gl/dist/maplibre-gl.css';
 // NOTE: these must match the installed maplibre-gl version — re-copy from
 // node_modules/maplibre-gl/dist/ after upgrading the package.
 maplibregl.setWorkerUrl(`${import.meta.env.BASE_URL}maplibre/maplibre-gl-worker.mjs`);
-
-const API_BASE = 'http://127.0.0.1:8000';
 
 // Change category -> fill color (legend order). Anything not listed here
 // falls back to FALLBACK_COLOR on the map.
@@ -592,6 +592,8 @@ export default function MapViewer({ onLogout, theme, onToggleTheme }) {
               <option key={s} value={s}>{s}</option>
             ))}
           </select>
+
+          <ReportButton siteId={selectedSite} />
 
           <button
             type="button"

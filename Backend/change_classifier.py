@@ -13,7 +13,7 @@ touching the rest of the pipeline.
 import cv2
 import numpy as np
 
-CAT_CONSTRUCTION = "Unauthorized Construction"
+CAT_CONSTRUCTION = "New Construction"
 CAT_DEFORESTATION = "Deforestation / Canopy Loss"
 CAT_MINING = "Surface Excavation / Mining"
 CAT_RIVERBED = "Riverbed Shift"
