@@ -16,11 +16,11 @@ const API_BASE = 'http://127.0.0.1:8000';
 // Change category -> fill color (legend order). Anything not listed here
 // falls back to FALLBACK_COLOR on the map.
 const CATEGORY_COLORS = [
-  ['#f97316', 'Unauthorized Construction'],
-  ['#ef4444', 'Deforestation / Canopy Loss'],
-  ['#a855f7', 'Surface Excavation / Mining'],
+  ['#f97316', 'New Construction'],
+  ['#ec0c0c', 'Deforestation / Canopy Loss'],
+  ['#ec16e4', 'Surface Excavation / Mining'],
   ['#3b82f6', 'Riverbed Shift'],
-  ['#eab308', 'Cleared Ground / Other'],
+  ['#0fea08', 'Cleared Ground / Other'],
 ];
 const FALLBACK_COLOR = '#9ca3af';
 
