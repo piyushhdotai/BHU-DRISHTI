@@ -1,0 +1,110 @@
+.splash-screen {
+  position: fixed;
+  inset: 0;
+  z-index: 9999;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: #ffffff;
+  opacity: 1;
+  visibility: visible;
+  pointer-events: all;
+  transition: opacity 420ms ease, visibility 420ms ease;
+  will-change: opacity, visibility;
+}
+
+.splash-screen--fading {
+  opacity: 0;
+  visibility: hidden;
+}
+
+.splash-screen__content {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 1.125rem;
+  transform: translate3d(0, 0, 0);
+}
+
+.splash-screen__title {
+  font-size: clamp(2rem, 5vw, 4rem);
+  line-height: 1;
+  font-weight: 800;
+  letter-spacing: 0.04em;
+  text-transform: none;
+  color: #1d4ed8;
+  text-align: center;
+  opacity: 1;
+  transform: translate3d(0, 0, 0);
+  animation: splash-title-fade 2.2s ease-in-out forwards;
+}
+
+.splash-screen__loader {
+  position: relative;
+  width: min(48vw, 340px);
+  height: 3px;
+  border-radius: 999px;
+  background: rgba(29, 78, 216, 0.18);
+  overflow: hidden;
+  box-shadow: 0 0 0 1px rgba(29, 78, 216, 0.08);
+}
+
+.splash-screen__loader-bar {
+  position: absolute;
+  inset: 0 auto 0 0;
+  width: 100%;
+  border-radius: inherit;
+  background: linear-gradient(90deg, #1d4ed8 0%, #60a5fa 100%);
+  transform: scaleX(0);
+  transform-origin: left center;
+  animation: splash-load 2.2s cubic-bezier(0.22, 1, 0.36, 1) forwards;
+}
+
+@keyframes splash-load {
+  0% {
+    transform: scaleX(0);
+    opacity: 0.9;
+  }
+  15% {
+    opacity: 1;
+  }
+  100% {
+    transform: scaleX(1);
+    opacity: 1;
+  }
+}
+
+@keyframes splash-title-fade {
+  0% {
+    opacity: 0;
+    transform: translate3d(0, 10px, 0);
+  }
+  15% {
+    opacity: 1;
+    transform: translate3d(0, 0, 0);
+  }
+  80% {
+    opacity: 1;
+  }
+  100% {
+    opacity: 0.98;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .splash-screen {
+    transition: none;
+  }
+
+  .splash-screen__title,
+  .splash-screen__loader-bar {
+    animation: none;
+    opacity: 1;
+    transform: none;
+  }
+
+  .splash-screen__loader-bar {
+    transform: scaleX(1);
+  }
+}

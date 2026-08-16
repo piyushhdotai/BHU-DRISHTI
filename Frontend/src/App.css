@@ -1,14 +1,9 @@
-#root {
+.app-shell {
+  position: relative;
   width: 100vw;
   height: 100vh;
-  margin: 0;
-  padding: 0;
   overflow: hidden;
-}
-
-body {
-  margin: 0;
-  padding: 0;
+  isolation: isolate;
 }
 
 /* Before/After comparison wrapper for maplibre-gl-compare: both map panes

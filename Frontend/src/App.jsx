@@ -1,9 +1,38 @@
+import { useEffect, useState } from 'react';
 import MapViewer from './components/MapViewer';
+import SplashScreen from './components/SplashScreen';
 import './App.css';
 
 function App() {
+  const [showSplash, setShowSplash] = useState(true);
+  const [isSplashFadingOut, setIsSplashFadingOut] = useState(false);
+
+  useEffect(() => {
+    if (!showSplash) {
+      return undefined;
+    }
+
+    const mediaQuery = window.matchMedia('(prefers-reduced-motion: reduce)');
+    const splashDuration = mediaQuery.matches ? 250 : 2200;
+    const fadeOutDelay = mediaQuery.matches ? 0 : 420;
+
+    const finishLoadingTimer = window.setTimeout(() => {
+      setIsSplashFadingOut(true);
+    }, splashDuration);
+
+    const hideTimer = window.setTimeout(() => {
+      setShowSplash(false);
+      setIsSplashFadingOut(false);
+    }, splashDuration + fadeOutDelay);
+
+    return () => {
+      window.clearTimeout(finishLoadingTimer);
+      window.clearTimeout(hideTimer);
+    };
+  }, [showSplash]);
+
   return (
-    <div style={{ width: '100vw', height: '100vh', position: 'relative' }}>
+    <div className="app-shell">
       {/* Platform Title Header Overlay */}
       <header style={{
         position: 'absolute',
@@ -26,6 +55,7 @@ function App() {
 
       {/* Main Map Comparison Control */}
       <MapViewer />
+      <SplashScreen isVisible={showSplash} isFadingOut={isSplashFadingOut} />
     </div>
   );
 }
