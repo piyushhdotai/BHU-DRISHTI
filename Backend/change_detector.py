@@ -1,5 +1,6 @@
 import cv2
 import numpy as np
+from concurrent.futures import ThreadPoolExecutor
 from shapely.geometry import Polygon, mapping
 
 from change_classifier import extract_blob_features, classify_blob
@@ -51,12 +52,19 @@ def _load_stored_image(site_id: str, epoch: str, flags):
 
 
 def process_change_detection(site_id: str):
-    t1_color = _load_stored_image(site_id, "T1", cv2.IMREAD_COLOR)
-    t2_color = _load_stored_image(site_id, "T2", cv2.IMREAD_COLOR)
+    # Fetch T1/T2/label concurrently: each ~2MB image takes several seconds to
+    # come down from Atlas, so serial downloads triple the wait.
+    with ThreadPoolExecutor(max_workers=3) as pool:
+        t1_future = pool.submit(_load_stored_image, site_id, "T1", cv2.IMREAD_COLOR)
+        t2_future = pool.submit(_load_stored_image, site_id, "T2", cv2.IMREAD_COLOR)
+        mask_future = pool.submit(_load_stored_image, site_id, "label", cv2.IMREAD_GRAYSCALE)
+        t1_color = t1_future.result()
+        t2_color = t2_future.result()
+        mask = mask_future.result()
+
     if t1_color is None or t2_color is None:
         return {"error": f"Image data for {site_id} not found."}
 
-    mask = _load_stored_image(site_id, "label", cv2.IMREAD_GRAYSCALE)
     if mask is None:
         mask = _detect_change_mask(t1_color, t2_color)
 

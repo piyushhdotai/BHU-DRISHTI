@@ -315,6 +315,93 @@ function EpochChip({ label }) {
 }
 
 /* ------------------------------------------------------------------ */
+/* Loading overlay: staged "live analysis" progress                    */
+/* ------------------------------------------------------------------ */
+
+// The backend really performs these steps on every site switch (pull T1/T2
+// from storage, run the detection model, extract polygons). The overlay
+// walks through them on a timer so the wait reads as live work instead of
+// a dead map. It advances monotonically and holds on the last stage until
+// the request resolves.
+const ANALYSIS_STAGES = [
+  'Fetching T1 / T2 satellite imagery…',
+  'Preprocessing & co-registering epochs…',
+  'Running change detection model…',
+  'Classifying detected changes…',
+  'Vectorizing change polygons…',
+];
+
+const LOADING_OVERLAY_CSS = `
+@keyframes bhu-spin { to { transform: rotate(360deg); } }
+@keyframes bhu-live-pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.3; } }
+@keyframes bhu-progress-slide { 0% { left: -40%; } 100% { left: 100%; } }
+`;
+
+function LoadingOverlay({ siteId }) {
+  // The overlay unmounts when loading finishes, so each site switch starts
+  // a fresh mount at stage 0 — no reset needed here.
+  const [stageIdx, setStageIdx] = useState(0);
+  useEffect(() => {
+    const id = setInterval(
+      () => setStageIdx((i) => Math.min(i + 1, ANALYSIS_STAGES.length - 1)),
+      1700
+    );
+    return () => clearInterval(id);
+  }, []);
+
+  return (
+    <div style={{
+      position: 'absolute', inset: 0, zIndex: 20, pointerEvents: 'none',
+      display: 'flex', alignItems: 'center', justifyContent: 'center',
+      background: 'rgba(2, 6, 23, 0.35)', backdropFilter: 'blur(2px)'
+    }}>
+      <style>{LOADING_OVERLAY_CSS}</style>
+      <div style={{
+        background: 'var(--panel-bg)', border: '1px solid var(--panel-border)',
+        boxShadow: 'var(--panel-shadow)', borderRadius: '10px',
+        padding: '20px 26px', minWidth: '320px', fontFamily: 'sans-serif',
+        display: 'flex', flexDirection: 'column', gap: '12px'
+      }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+          <span style={{
+            width: '8px', height: '8px', borderRadius: '50%', background: '#ef4444',
+            animation: 'bhu-live-pulse 1.2s ease-in-out infinite', flexShrink: 0
+          }} />
+          <span style={{ color: 'var(--brand-blue)', fontWeight: 'bold', fontSize: '11px', letterSpacing: '0.08em' }}>
+            LIVE ANALYSIS
+          </span>
+        </div>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '14px' }}>
+          <div style={{
+            width: '26px', height: '26px', borderRadius: '50%', flexShrink: 0,
+            border: '3px solid var(--brand-blue-soft)', borderTopColor: 'var(--brand-blue)',
+            animation: 'bhu-spin 0.9s linear infinite'
+          }} />
+          <div>
+            <div style={{ color: 'var(--text-primary)', fontWeight: 700, fontSize: '15px' }}>
+              Analyzing {siteId}
+            </div>
+            <div style={{ color: 'var(--text-secondary)', fontSize: '12.5px', marginTop: '3px' }}>
+              {ANALYSIS_STAGES[stageIdx]}
+            </div>
+          </div>
+        </div>
+        <div style={{
+          position: 'relative', height: '3px', borderRadius: '2px',
+          background: 'var(--brand-blue-soft)', overflow: 'hidden'
+        }}>
+          <div style={{
+            position: 'absolute', top: 0, width: '40%', height: '100%',
+            borderRadius: '2px', background: 'var(--brand-blue)',
+            animation: 'bhu-progress-slide 1.4s ease-in-out infinite'
+          }} />
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/* ------------------------------------------------------------------ */
 /* MapViewer                                                           */
 /* ------------------------------------------------------------------ */
 
@@ -430,7 +517,7 @@ export default function MapViewer({ onLogout, theme, onToggleTheme }) {
 
     const loadSite = async () => {
       console.log('Selected site:', selectedSite);
-      setStatus({ kind: 'loading', message: 'Loading GIS analysis...' });
+      setStatus({ kind: 'loading', message: `Analyzing ${selectedSite} — model running...` });
 
       let data;
       try {
@@ -627,6 +714,9 @@ export default function MapViewer({ onLogout, theme, onToggleTheme }) {
       <div ref={containerRef} className="comparison-container">
         <div ref={beforeMapRef} className="compare-map" />
         <div ref={afterMapRef} className="compare-map" />
+
+        {/* Staged live-analysis overlay while a site is being processed */}
+        {status.kind === 'loading' && <LoadingOverlay siteId={selectedSite} />}
 
         {/* Statistics overlay */}
         <StatsPanel stats={stats} selectedSite={selectedSite} />

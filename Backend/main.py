@@ -1,7 +1,10 @@
 import hashlib
 import os
 import re
+import threading
+from contextlib import asynccontextmanager
 from datetime import datetime
+from functools import lru_cache
 
 from dotenv import load_dotenv
 from fastapi import FastAPI, HTTPException
@@ -11,17 +14,29 @@ from motor.motor_asyncio import AsyncIOMotorClient, AsyncIOMotorGridFSBucket
 from shapely.geometry import shape
 
 from change_detector import process_change_detection
-from image_store import get_image_bytes, list_complete_sites
+from image_store import get_image_bytes, list_complete_sites, warm_cache
 from services.report_generator import generate_pdf_report
 
 load_dotenv()
 
+
+@asynccontextmanager
+async def _lifespan(app: FastAPI):
+    # Pre-download all imagery from Atlas in the background so first clicks
+    # don't pay the ~7s-per-image download cost. Cache fills lazily anyway,
+    # so startup is never blocked on this.
+    threading.Thread(target=warm_cache, daemon=True).start()
+    yield
+
+
 app = FastAPI(
     title="BHU-DRISHTI Geospatial Analytics Engine",
-    version="1.0.0"
+    version="1.0.0",
+    lifespan=_lifespan,
 )
 
 
+@lru_cache
 def _async_client():
     uri = os.environ.get("MONGODB_URI")
     if not uri:
@@ -186,14 +201,20 @@ def home():
         "docs_url": "http://127.0.0.1:8000/docs"
     }
 
+# Cache analysis results per site: the OpenCV pass costs ~2.5s and its output
+# only changes when imagery is re-uploaded, so repeat site switches during a
+# demo should be served from memory. Cleared on process restart.
+_cached_analysis = lru_cache(maxsize=32)(process_change_detection)
+
+
 @app.get("/api/analyze/{site_id}")
 def analyze_site(site_id: str):
     """
-    Analyzes satellite site imagery by ID (e.g., train_1) 
+    Analyzes satellite site imagery by ID (e.g., train_1)
     and returns GeoJSON change polygons and affected area metrics.
     """
     try:
-        result = process_change_detection(site_id)
+        result = _cached_analysis(site_id)
     except RuntimeError as exc:
         raise HTTPException(status_code=503, detail=str(exc))
     if "error" in result:
@@ -222,7 +243,13 @@ def site_image(site_id: str, epoch: str):
         raise HTTPException(status_code=503, detail=str(exc))
     if data is None:
         raise HTTPException(status_code=404, detail=f"Image {epoch}/{site_id} not found.")
-    return Response(content=data, media_type="image/png")
+    # Let the browser cache imagery: switching back to a previously viewed
+    # site then skips the network entirely.
+    return Response(
+        content=data,
+        media_type="image/png",
+        headers={"Cache-Control": "public, max-age=3600"},
+    )
 
 
 @app.post("/api/reports/generate/{site_id}")

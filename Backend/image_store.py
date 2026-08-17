@@ -11,6 +11,8 @@ Connection is configured through environment variables (see .env.example):
 """
 
 import os
+import threading
+from collections import OrderedDict
 from functools import lru_cache
 
 import gridfs
@@ -20,6 +22,13 @@ from pymongo import MongoClient
 load_dotenv()
 
 EPOCHS = ("T1", "T2", "label")
+
+# In-memory LRU cache for image bytes. Atlas downloads run at ~300 KB/s here
+# (~7s per 2MB image), so every image is fetched from MongoDB at most once per
+# process; repeat views and the analyze -> image-endpoint handoff hit RAM.
+_CACHE_MAX_ENTRIES = 64  # ~130MB worst case; current dataset is ~40MB
+_cache: "OrderedDict[tuple[str, str], bytes]" = OrderedDict()
+_cache_lock = threading.Lock()
 
 
 def _fix_srv_resolver(uri: str) -> None:
@@ -65,13 +74,50 @@ def _files():
 
 
 def get_image_bytes(site_id: str, epoch: str):
-    """Return the PNG bytes for a site/epoch, or None if not stored."""
+    """Return the PNG bytes for a site/epoch, or None if not stored.
+
+    Results are cached in process memory: a download from Atlas happens at
+    most once per site/epoch per process.
+    """
+    key = (site_id, epoch)
+    with _cache_lock:
+        cached = _cache.get(key)
+        if cached is not None:
+            _cache.move_to_end(key)
+            return cached
+
     file_doc = _files().find_one(
         {"metadata.site_id": site_id, "metadata.epoch": epoch}
     )
     if file_doc is None:
         return None
-    return _bucket().open_download_stream(file_doc["_id"]).read()
+    data = _bucket().open_download_stream(file_doc["_id"]).read()
+
+    with _cache_lock:
+        _cache[key] = data
+        _cache.move_to_end(key)
+        while len(_cache) > _CACHE_MAX_ENTRIES:
+            _cache.popitem(last=False)
+    return data
+
+
+def warm_cache() -> None:
+    """Pre-download every stored image into the in-memory cache.
+
+    Intended to run in a background thread at server startup so the first
+    user request doesn't pay the Atlas download cost. Best-effort: any
+    failure leaves the cache to fill lazily on demand.
+    """
+    try:
+        sites = list_complete_sites()
+    except Exception:
+        return
+    for site_id in sites:
+        for epoch in EPOCHS:
+            try:
+                get_image_bytes(site_id, epoch)
+            except Exception:
+                pass
 
 
 def list_complete_sites():
@@ -93,3 +139,6 @@ def upload_image(site_id: str, epoch: str, png_bytes: bytes) -> None:
         png_bytes,
         metadata={"site_id": site_id, "epoch": epoch},
     )
+    with _cache_lock:
+        _cache[(site_id, epoch)] = png_bytes
+        _cache.move_to_end((site_id, epoch))
